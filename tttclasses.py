@@ -12,7 +12,6 @@ class tttboard:
     lastboard = copy of the last board
     lastmove = (row, col) tuple of the last placed location
     availlocs = list of (row, col) tuples for availble locations'''
-    
     @staticmethod
     def availloc(board):
         '''iterator through empty spaces'''
