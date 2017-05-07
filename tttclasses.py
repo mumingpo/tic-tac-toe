@@ -273,3 +273,4 @@ class tttai_learn(tttboard):
                         if grandparententry is not None:
                             if grandparententry[0] != 0 and grandparententry[0] != 15: grandparententry[0] = max(grandparententry[0] - 1, 1)
         return self.board.setpiece(loc, disp)
+    
