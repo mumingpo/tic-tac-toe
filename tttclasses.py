@@ -13,7 +13,7 @@ class tttboard:
     lastmove = (row, col) tuple of the last placed location
     availlocs = list of (row, col) tuples for availble locations'''
     @staticmethod
-    def availloc(board):
+    def availloc(board):    
         '''iterator through empty spaces'''
         for row in range(3):
             for col in range(3):
@@ -179,6 +179,28 @@ class tttai_learn(tttboard):
                 f.write(repr(values[1]) + '|')                                                                      ##write parentboards
                 f.write(repr(values[2]) + '\n')                                                                     ##write children
 
+    @staticmethod
+    def positivereinforcement(bsdb, key, lastmove):                                                                 ##counterintuitive because of turn switch. if current board's score is 15, decreases score of last board
+        for parentrepr in bsdb[key][1]:
+            parententry = bsdb.get(parentrepr)
+            if parententry is not None:
+                if parententry[0] >= 2:
+                    parententry[0] -= 1
+            else:
+                bsdb[parentrepr] = [0, [], [bsdb, lastmove]]
+    @staticmethod
+    def positivepunishment(bsdb, key, lastmove):                                                                    ##if current board's score is 0, make opponent's last score 15 and decreases likelyhood of self.board before that
+        for parentrepr in bsdb[key][1]:
+            parententry = bsdb.get(parentrepr)
+            if parententry is not None:
+                parententry[0] = 15
+                for grandparentrepr in parententry[1]:
+                    grandparententry = bsdb.get(grandparentrepr)
+                    if grandparententry is not None:
+                        if grandparententry[0] >= 2:
+                            grandparententry[0] -= 1
+            else:
+                bsdb[parentrepr] = [15, [], [bsdb, lastmove]]
     def consider(self):
         '''The logic of learning-AI is as followed:
         1: Check any move resulting in immediate win
@@ -195,17 +217,21 @@ class tttai_learn(tttboard):
             if self.board.board[i[0]][i[1]] == self.board.board[k[0]][k[1]] == self.board.turn and self.board.board[j[0]][j[1]] == 0: move = j
             if self.board.board[j[0]][j[1]] == self.board.board[k[0]][k[1]] == self.board.turn and self.board.board[i[0]][i[1]] == 0: move = i
         if move is not None: return move, 15                                                                        ##if this is a board with a definite win scenario, give a score of 15
+        moveset = set()
         for i, j, k in straightlines():                                                                             ##check for opponent 2-in-a-rows
-            if 0 != self.board.board[i[0]][i[1]] == self.board.board[j[0]][j[1]] != self.board.turn and self.board.board[k[0]][k[1]] == 0: move = k
-            if 0 != self.board.board[i[0]][i[1]] == self.board.board[k[0]][k[1]] != self.board.turn and self.board.board[j[0]][j[1]] == 0: move = j
-            if 0 != self.board.board[j[0]][j[1]] == self.board.board[k[0]][k[1]] != self.board.turn and self.board.board[i[0]][i[1]] == 0: move = i
-        if move is not None:                                                                                        ##forced to block opponent 2-in-a-rows
+            if 0 != self.board.board[i[0]][i[1]] == self.board.board[j[0]][j[1]] != self.board.turn and self.board.board[k[0]][k[1]] == 0: moveset.add((k[0], k[1]))
+            if 0 != self.board.board[i[0]][i[1]] == self.board.board[k[0]][k[1]] != self.board.turn and self.board.board[j[0]][j[1]] == 0: moveset.add((j[0], j[1]))
+            if 0 != self.board.board[j[0]][j[1]] == self.board.board[k[0]][k[1]] != self.board.turn and self.board.board[i[0]][i[1]] == 0: moveset.add((i[0], i[1]))
+        if len(moveset) == 1:                                                                                       ##forced to block opponent 2-in-a-rows
+            move = next(iter(moveset))                                                                              ##place move
             newboard = tttboard(self.board.copyboard(), self.board.turn)                                            ##check the score of resulting board
             newboard.setpiece(move, disp = False)
             newboard.canonicalize()
             newboardentry = self.bsdb.get(repr(newboard.board))                                                     ##if resulting board for opponent exists in database
             if newboardentry is not None: return move, 15 - newboardentry[0]                                        ##return opposite score
-            return move, 5                                                                                          ##else just return low score
+            else: return move, 5                                                                                    ##else just return low score
+        elif len(moveset) >= 2:                                                                                     ##more than 2 locs need blocking
+            return next(iter(moveset)), 0                                                                           ##lost
         numofpos = len(self.board.availlocs)                                                                        ##iterate through available positions
         availlocscore = [0] * numofpos                                                                              ##and score each
         for i in range(numofpos):
@@ -255,22 +281,23 @@ class tttai_learn(tttboard):
             if lastboard is not None:
                 if lastboard not in currententry[1]: currententry[1].append(lastboard)                              ##log parent board if not already in there
         if score == 15:                                                                                             ##positive reinforcement
-            for parent in currententry[1]:
-                parententry = self.bsdb.get(parent)
-                if parententry is not None:
-                    if parententry[0] != 0 and parententry[0] != 15: parententry[0] = max(parententry[0] - 2, 1)
-                    for grandparent in parententry[1]:
-                        grandparententry = self.bsdb.get(grandparent)
-                        if grandparententry is not None:
-                            if grandparententry[0] != 0 and grandparententry[0] != 15: grandparententry[0] = min(grandparententry[0] + 1, 14)
-        if score == 0:                                                                                             ##negative reinforcement
-            for parent in currententry[1]:
-                parententry = self.bsdb.get(parent)
-                if parententry is not None:
-                    if parententry[0] != 0 and parententry[0] != 15: parententry[0] = min(parententry[0] + 2, 14)
-                    for grandparent in parententry[1]:
-                        grandparententry = self.bsdb.get(grandparent)
-                        if grandparententry is not None:
-                            if grandparententry[0] != 0 and grandparententry[0] != 15: grandparententry[0] = max(grandparententry[0] - 1, 1)
+            self.positivereinforcement(self.bsdb, currentboard, self.board.lastmove)
+##            for parent in currententry[1]:
+##                parententry = self.bsdb.get(parent)
+##                if parententry is not None:
+##                    if parententry[0] != 0 and parententry[0] != 15: parententry[0] = max(parententry[0] - 2, 1)
+##                    for grandparent in parententry[1]:
+##                        grandparententry = self.bsdb.get(grandparent)
+##                        if grandparententry is not None:
+##                            if grandparententry[0] != 0 and grandparententry[0] != 15: grandparententry[0] = min(grandparententry[0] + 1, 14)
+        if score == 0:                                                                                             ##positive punishment
+            self.positivepunishment(self.bsdb, currentboard, self.board.lastmove)
+##            for parent in currententry[1]:
+##                parententry = self.bsdb.get(parent)
+##                if parententry is not None:
+##                    if parententry[0] != 0 and parententry[0] != 15: parententry[0] = min(parententry[0] + 2, 14)
+##                    for grandparent in parententry[1]:
+##                        grandparententry = self.bsdb.get(grandparent)
+##                        if grandparententry is not None:
+##                            if grandparententry[0] != 0 and grandparententry[0] != 15: grandparententry[0] = max(grandparententry[0] - 1, 1)
         return self.board.setpiece(loc, disp)
-    
